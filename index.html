@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preferential Voting in Australia</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Simple transition for bubble movement */
+        .bubble {
+            transition: all 0.8s ease-in-out;
+            /* width: 24px; */ /* Adjust size as needed for emoji */
+            /* height: 24px; */
+            font-size: 1.3rem; /* Slightly smaller on mobile */
+            line-height: 1;
+            display: inline-flex; /* Use flex to center number */
+            align-items: center;
+            justify-content: center;
+            margin: 1px; /* Tighter spacing on mobile */
+            position: relative; /* Needed for number overlay */
+            cursor: default; /* Indicate it's not interactive */
+        }
+        
+        @media (min-width: 640px) {
+            .bubble {
+                font-size: 1.5rem; /* Original size on larger screens */
+                margin: 2px; /* Original spacing on larger screens */
+            }
+        }
+        .vote-preference-number {
+            position: absolute;
+            bottom: -2px;
+            right: -2px;
+            font-size: 0.6rem;
+            font-weight: bold;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.6);
+            border-radius: 50%;
+            width: 12px;
+            height: 12px;
+            line-height: 12px; /* Center number vertically */
+            text-align: center;
+            pointer-events: none; /* Don't interfere with hover */
+        }
+        .user-bubble {
+            /* Use outline or filter for user vote instead of border */
+            filter: drop-shadow(0 0 3px gold);
+            transform: scale(1.1);
+        }
+        .bucket-content {
+            min-height: 100px; /* Ensure buckets have some initial height */
+            display: flex;
+            flex-wrap: wrap;
+            align-content: flex-start; /* Start filling bubbles from top */
+            padding: 4px;
+        }
+         .eliminated {
+            opacity: 0.4;
+            filter: grayscale(80%);
+        }
+        .eliminated .bucket-label {
+             text-decoration: line-through;
+        }
+
+        /* Style number inputs a bit */
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+        input[type=number] {
+          -moz-appearance: textfield; /* Firefox */
+          width: 40px;
+          text-align: center;
+        }
+        /* Animation for initial user vote highlight */
+        @keyframes pulse {
+            0%, 100% { transform: scale(1.1); filter: drop-shadow(0 0 3px gold); }
+            50% { transform: scale(1.3); filter: drop-shadow(0 0 8px gold); }
+        }
+        .initial-pulse {
+            /* Loop the pulse animation */
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        /* Style for the "Your Vote" indicator */
+        .your-vote-indicator {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            font-size: 0.6rem;
+            padding: 1px 4px;
+            border-radius: 4px;
+            white-space: nowrap;
+            z-index: 110; /* Above animating emojis */
+            pointer-events: none; /* Don't block interactions */
+            transition: top 0.8s ease-in-out, left 0.8s ease-in-out; /* Match emoji animation */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+
+    <div class="container mx-auto p-4 md:p-8 max-w-4xl bg-white shadow-lg mt-4 sm:mt-8 rounded">
+
+        <h1 class="text-2xl md:text-3xl font-bold text-center text-blue-700 mb-2">Preferential Voting in Australia</h1>
+        <p class="text-center text-gray-600 mb-6">See how preferential voting works in Australia. Even if your #1 choice is out, your vote flows to your next preference.</p>
+
+        <!-- 1. Ranking Section -->
+        <div id="ranking-section" class="mb-6 p-4 border rounded bg-gray-50">
+            <h2 class="text-xl font-semibold mb-3 text-center">Voting ballot, Rank the Parties!</h2>
+            <p class="text-sm text-center text-gray-500 mb-4">(1 = Most preferred, 4 = Least preferred)</p>
+            <div id="ranking-inputs" class="flex flex-col sm:flex-row justify-around items-center space-y-2 sm:space-y-0 sm:space-x-4">
+                <!-- Inputs will be generated here by JS -->
+            </div>
+            <div class="text-center mt-4">
+                <button id="start-button" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 sm:px-6 rounded disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                    Start the Count
+                </button>
+                <p id="ranking-error" class="text-red-500 text-sm mt-2 h-4"></p> <!-- Error message placeholder -->
+            </div>
+        </div>
+
+        <!-- 2. Election Visualisation Section -->
+        <div id="election-section" class="mb-6 hidden">
+            <h2 class="text-xl font-semibold mb-4 text-center">2. The Count</h2>
+            <div id="status-message" class="text-center text-sm sm:text-lg font-medium text-gray-700 px-2 mb-4 min-h-[2.5rem]"></div>
+
+            <div id="buckets-container" class="grid grid-cols-2 md:grid-cols-4 gap-4 relative"> <!-- Added relative positioning -->
+                <!-- Buckets will be generated here by JS -->
+            </div>
+
+             <div class="text-center mt-6">
+                 <button id="next-step-button" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 sm:px-5 rounded hidden">
+                    Next Step
+                </button>
+             </div>
+        </div>
+
+        <!-- 3. Final Message Section -->
+        <div id="final-message-section" class="mt-6 p-4 border rounded bg-emerald-50 text-center hidden">
+             <h2 class="text-xl font-semibold mb-2 text-emerald-800">Result!</h2>
+            <p id="winner-message" class="text-base sm:text-lg text-emerald-700 mb-3"></p>
+             <p id="takeaway-message" class="text-sm sm:text-md text-emerald-900"></p>
+             <button id="reset-button" class="mt-4 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 sm:px-5 rounded">
+                 Start Over
+             </button>
+        </div>
+
+    </div>
+
+
+    <div class="container mx-auto p-4 md:p-8 max-w-4xl bg-white shadow-lg mt-4 sm:mt-8 rounded space-y-4 flex-col">
+
+        <div style="position: relative; padding-bottom: 56.25%; /* 16:9 */ height: 0; overflow: hidden; max-width: 100%; height: auto;">
+            <iframe src="https://www.youtube.com/embed/JzVGxLji8oE" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;" title="YouTube video player"></iframe>
+        </div>
+
+    </div>
+    
+
+
+
+    <div class="container mx-auto p-4 md:p-8 max-w-4xl bg-white shadow-lg mt-8 rounded space-y-4 flex-col">
+
+        <h1 class="text-2xl md:text-3xl font-bold text-center text-blue-700 mb-2">Learn More!</h1>
+
+        <a href="https://www.chickennation.com/voting/">
+            <div class="text-blue-900 font-bold border-radius-1 border-1 bg-gray-100 my-3 sm:my-5 p-3">
+                You Can’t ‘Waste’ Your Vote
+            </div>
+        </a>
+
+        <a href="https://www.chickennation.com/voting/">
+            <div class="text-blue-900 font-bold border-radius-1 border-1 bg-gray-100 my-3 sm:my-5 p-3">
+                Australian Electoral Commission: Preferential Voting
+            </div>
+        </a>
+
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const CANDIDATES = [
+            { id: 'aqua', name: 'Aqua Party', color: 'bg-cyan-400', emoji: '💧', initialVotes: 8 }, // Example Emojis
+            { id: 'leaf', name: 'Leaf Party', color: 'bg-green-500', emoji: '🌿', initialVotes: 15 },
+            { id: 'sunny', name: 'Sunny Party', color: 'bg-yellow-400', emoji: '☀️', initialVotes: 12 },
+            { id: 'terra', name: 'Terra Party', color: 'bg-orange-500', emoji: '🧱', initialVotes: 5 } // This one will likely be eliminated first
+        ];
+        const TOTAL_VOTES = CANDIDATES.reduce((sum, c) => sum + c.initialVotes, 0) + 1; // +1 for the user's vote
+        const QUOTA = Math.floor(TOTAL_VOTES / 2) + 1;
+
+        // --- STATE ---
+        let userPreferences = {}; // { 'aqua': 1, 'leaf': 2, ... }
+        let currentVotes = {}; // { 'aqua': [], 'leaf': [], ... } // Stores bubble elements
+        let activeCandidates = []; // Array of candidate IDs still in the running
+        let round = 0;
+        let userBubbleElement = null;
+        let userVoteIndicatorElement = null; // To hold the "Your Vote" label
+        let eliminatedOrder = []; // Keep track of who was eliminated
+
+        // --- DOM ELEMENTS ---
+        const rankingInputsContainer = document.getElementById('ranking-inputs');
+        const startButton = document.getElementById('start-button');
+        const rankingError = document.getElementById('ranking-error');
+        const electionSection = document.getElementById('election-section');
+        const bucketsContainer = document.getElementById('buckets-container');
+        const statusMessage = document.getElementById('status-message');
+        const nextStepButton = document.getElementById('next-step-button');
+        const finalMessageSection = document.getElementById('final-message-section');
+        const winnerMessage = document.getElementById('winner-message');
+        const takeawayMessage = document.getElementById('takeaway-message');
+        const resetButton = document.getElementById('reset-button');
+        const rankingSection = document.getElementById('ranking-section');
+
+
+        // --- FUNCTIONS ---
+
+        function createVoteElement(candidateId, preferences, isUser = false, initialPrefRank = 1) {
+            const voteElement = document.createElement('span'); // Use span for inline-flex emoji
+            const candidate = CANDIDATES.find(c => c.id === candidateId);
+            voteElement.classList.add('bubble'); // Keep bubble class for transitions/logic if needed
+            voteElement.textContent = candidate.emoji; // Display emoji
+            voteElement.title = `Vote for ${candidate.name}`; // Basic tooltip
+
+            // Store preference data
+            voteElement.dataset.prefs = JSON.stringify(preferences);
+            voteElement.dataset.currentPrefRank = initialPrefRank; // Store the rank this vote currently represents
+            voteElement.dataset.ballotId = `ballot-${Math.random().toString(36).substr(2, 9)}`; // Unique ID
+
+            // Add the preference number overlay
+            const prefNumberSpan = document.createElement('span');
+            prefNumberSpan.classList.add('vote-preference-number');
+            prefNumberSpan.textContent = initialPrefRank;
+            voteElement.appendChild(prefNumberSpan);
+
+            if (isUser) {
+                voteElement.classList.add('user-bubble');
+                voteElement.title += " (Your Vote)"; // Update tooltip
+                userBubbleElement = voteElement;
+            }
+
+            // Add full preference list to tooltip on hover (optional enhancement)
+            let fullPrefsTooltip = Object.entries(preferences)
+                                     .sort(([, rankA], [, rankB]) => rankA - rankB)
+                                     .map(([id, rank]) => `${rank}: ${CANDIDATES.find(c=>c.id===id).name}`)
+                                     .join('\n');
+            voteElement.title += `\nPreferences:\n${fullPrefsTooltip}`;
+
+
+            return voteElement;
+        }
+
+
+        function setupRankingInputs() {
+            rankingInputsContainer.innerHTML = ''; // Clear previous inputs
+            CANDIDATES.forEach(candidate => {
+                const div = document.createElement('div');
+                // Make each input group take full width on smallest screens, center items
+                div.classList.add('flex', 'flex-col', 'items-center', 'text-center', 'w-full', 'sm:w-auto');
+                const label = document.createElement('label');
+                // Display emoji and name
+                label.innerHTML = `<span class="text-2xl">${candidate.emoji}</span><br>${candidate.name}`;
+                label.htmlFor = `rank-${candidate.id}`;
+                label.classList.add('mb-1', 'font-medium', 'cursor-pointer'); // Make label clickable for input
+
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.id = `rank-${candidate.id}`;
+                input.name = candidate.id;
+                input.min = 1;
+                input.max = CANDIDATES.length;
+                input.required = true;
+                input.classList.add('border', 'rounded', 'p-1');
+                input.addEventListener('input', handleRankingChange);
+
+                div.appendChild(label);
+                div.appendChild(input);
+                rankingInputsContainer.appendChild(div);
+            });
+        }
+
+        function handleRankingChange() {
+            const inputs = rankingInputsContainer.querySelectorAll('input[type=number]');
+            let allFilled = true;
+            let ranks = new Set();
+            let duplicate = false;
+            userPreferences = {}; // Reset
+
+            inputs.forEach(input => {
+                const rank = parseInt(input.value);
+                if (!input.value || rank < 1 || rank > CANDIDATES.length) {
+                    allFilled = false;
+                } else {
+                    if (ranks.has(rank)) {
+                        duplicate = true;
+                    }
+                    ranks.add(rank);
+                    userPreferences[input.name] = rank; // Store preference { aqua: 1, leaf: 3, ... }
+                }
+            });
+
+            if (duplicate) {
+                rankingError.textContent = "Each rank number must be unique.";
+                startButton.disabled = true;
+            } else if (!allFilled || ranks.size !== CANDIDATES.length) {
+                rankingError.textContent = "Please assign a rank from 1 to " + CANDIDATES.length + " to all parties.";
+                startButton.disabled = true;
+            } else {
+                rankingError.textContent = ""; // Clear error
+                startButton.disabled = false;
+            }
+        }
+
+        function setupBuckets() {
+            bucketsContainer.innerHTML = '';
+            currentVotes = {}; // Reset vote counts/bubbles
+            activeCandidates = CANDIDATES.map(c => c.id); // All candidates start active
+            eliminatedOrder = [];
+
+            CANDIDATES.forEach(candidate => {
+                currentVotes[candidate.id] = []; // Initialize as array to hold bubble elements
+
+                const bucketDiv = document.createElement('div');
+                bucketDiv.id = `bucket-${candidate.id}`;
+                bucketDiv.classList.add('border', 'rounded-lg', 'p-2', 'bg-gray-100', 'flex', 'flex-col');
+
+                const label = document.createElement('div');
+                label.textContent = `${candidate.name} (Votes: 0)`;
+                // Add responsive text size for bucket labels
+                label.classList.add('font-semibold', 'mb-2', 'text-center', 'bucket-label', 'text-sm', 'md:text-base');
+                label.id = `label-${candidate.id}`;
+
+                const content = document.createElement('div');
+                content.id = `content-${candidate.id}`;
+                content.classList.add('bucket-content', 'flex-grow', 'border-t', 'pt-2');
+
+                bucketDiv.appendChild(label);
+                bucketDiv.appendChild(content);
+                bucketsContainer.appendChild(bucketDiv);
+            });
+        }
+
+         function distributeInitialVotes() {
+             // Find the user's first preference
+            const userFirstPrefId = Object.keys(userPreferences).find(id => userPreferences[id] === 1);
+
+            CANDIDATES.forEach(candidate => {
+                const bucketContent = document.getElementById(`content-${candidate.id}`);
+                let votesToCreate = candidate.initialVotes;
+
+                // Add user vote to their #1 choice
+                if (candidate.id === userFirstPrefId) {
+                    // User vote uses the globally stored userPreferences
+                    const userVote = createVoteElement(candidate.id, userPreferences, true, 1);
+                    bucketContent.appendChild(userVote);
+                    currentVotes[candidate.id].push(userVote);
+
+                    // Add continuous pulse animation class
+                    userVote.classList.add('initial-pulse');
+
+                    // Create and position the "Your Vote" indicator
+                    if (!userVoteIndicatorElement) { // Create only once
+                        userVoteIndicatorElement = document.createElement('span');
+                        userVoteIndicatorElement.textContent = 'Your Vote';
+                        userVoteIndicatorElement.classList.add('your-vote-indicator');
+                        bucketsContainer.appendChild(userVoteIndicatorElement); // Append to positioned container
+                    }
+                    // Position indicator initially
+                    positionIndicatorNearElement(userVoteIndicatorElement, userVote);
+
+                }
+
+                // Add other initial votes as non-user votes
+                // Assign simplified random preferences for demo distribution
+                for (let i = 0; i < votesToCreate; i++) {
+                     // Ensure we don't create a vote for the user's #1 spot if they are this candidate
+                     if (candidate.id === userFirstPrefId && i === votesToCreate -1 && currentVotes[candidate.id].length > 0) continue; // Skip if user vote already added
+
+                    // Create a shuffled preference list starting with the initial candidate
+                    let initialPref = candidate.id;
+                    let otherPrefs = CANDIDATES.map(c => c.id).filter(id => id !== initialPref).sort(() => 0.5 - Math.random());
+                    let randomPrefs = [initialPref, ...otherPrefs].reduce((obj, id, index) => { obj[id] = index + 1; return obj; }, {});
+
+                    const vote = createVoteElement(candidate.id, randomPrefs, false, 1);
+                    bucketContent.appendChild(vote);
+                    currentVotes[candidate.id].push(vote);
+                }
+                updateVoteCountLabel(candidate.id);
+            });
+            statusMessage.textContent = `Initial votes counted. Quota to win: ${QUOTA}`;
+         }
+
+         // Function to slightly adjust non-user vote counts to increase chance of close rounds
+         function adjustInitialCountsForDrama(userPrefs) {
+             const userFirstPrefId = Object.keys(userPrefs).find(id => userPrefs[id] === 1);
+             const userSecondPrefId = Object.keys(userPrefs).find(id => userPrefs[id] === 2);
+             // Find the base counts from CANDIDATES config
+             let adjustedCounts = CANDIDATES.reduce((acc, c) => {
+                 acc[c.id] = c.initialVotes;
+                 return acc;
+             }, {});
+
+             // Shift one vote: Decrease #1's initial non-user count, Increase #2's
+             if (userFirstPrefId && adjustedCounts[userFirstPrefId] > 0) {
+                 adjustedCounts[userFirstPrefId]--;
+                 if (userSecondPrefId) {
+                     adjustedCounts[userSecondPrefId]++;
+                 } else {
+                     // If no second pref somehow, give it back to first to maintain total
+                     adjustedCounts[userFirstPrefId]++;
+                 }
+             }
+             // console.log("Adjusted initial non-user counts for drama:", adjustedCounts);
+             return adjustedCounts; // Return object like { aqua: 7, leaf: 16, ... }
+         }
+
+
+         function distributeInitialVotes() {
+             // Find the user's first preference
+            const userFirstPrefId = Object.keys(userPreferences).find(id => userPreferences[id] === 1);
+            // Get adjusted initial counts for non-user votes
+            const adjustedInitialCounts = adjustInitialCountsForDrama(userPreferences);
+
+
+            CANDIDATES.forEach(candidate => {
+                const bucketContent = document.getElementById(`content-${candidate.id}`);
+                // Use the adjusted count for non-user votes for this candidate
+                let votesToCreate = adjustedInitialCounts[candidate.id];
+
+                // Add user vote to their #1 choice
+                if (candidate.id === userFirstPrefId) {
+                    // User vote uses the globally stored userPreferences
+                    const userVote = createVoteElement(candidate.id, userPreferences, true, 1);
+                    bucketContent.appendChild(userVote);
+                    currentVotes[candidate.id].push(userVote);
+
+                    // Add continuous pulse animation class
+                    userVote.classList.add('initial-pulse');
+
+                    // Create and position the "Your Vote" indicator
+                    if (!userVoteIndicatorElement) { // Create only once
+                        userVoteIndicatorElement = document.createElement('span');
+                        userVoteIndicatorElement.textContent = 'Your Vote';
+                        userVoteIndicatorElement.classList.add('your-vote-indicator');
+                        bucketsContainer.appendChild(userVoteIndicatorElement); // Append to positioned container
+                    }
+                    // Position indicator initially
+                    positionIndicatorNearElement(userVoteIndicatorElement, userVote);
+
+                }
+
+                // Add other initial votes as non-user votes
+                // Assign simplified random preferences for demo distribution
+                for (let i = 0; i < votesToCreate; i++) {
+                     // Ensure we don't create a vote for the user's #1 spot if they are this candidate
+                     // This check might be redundant now with adjusted counts, but safe to keep
+                     // if (candidate.id === userFirstPrefId && i === votesToCreate -1 && currentVotes[candidate.id].length > 0) continue;
+
+                    // Create a shuffled preference list starting with the initial candidate
+                    let initialPref = candidate.id;
+                    let otherPrefs = CANDIDATES.map(c => c.id).filter(id => id !== initialPref).sort(() => 0.5 - Math.random());
+                    let randomPrefs = [initialPref, ...otherPrefs].reduce((obj, id, index) => { obj[id] = index + 1; return obj; }, {});
+
+                    const vote = createVoteElement(candidate.id, randomPrefs, false, 1);
+                    bucketContent.appendChild(vote);
+                    currentVotes[candidate.id].push(vote);
+                }
+                updateVoteCountLabel(candidate.id);
+            });
+            statusMessage.textContent = `Initial votes counted. Quota to win: ${QUOTA}`;
+         }
+
+        function updateVoteCountLabel(candidateId) {
+            const label = document.getElementById(`label-${candidateId}`);
+            const count = currentVotes[candidateId] ? currentVotes[candidateId].length : 0;
+             if (label) {
+                label.textContent = `${CANDIDATES.find(c=>c.id === candidateId).name} (Votes: ${count})`;
+             }
+        }
+
+        // Helper function to position the indicator near an element
+        function positionIndicatorNearElement(indicator, targetElement) {
+            if (!indicator || !targetElement) return;
+            const containerRect = bucketsContainer.getBoundingClientRect();
+            const targetRect = targetElement.getBoundingClientRect();
+            // Position slightly above and centered horizontally relative to the target
+            // let top = targetRect.top - containerRect.top - targetRect.height * 0.5; // Adjust vertical offset - Original calculation
+            let top = targetRect.top - containerRect.top - indicator.offsetHeight + 15; // Position 2px above the target
+            let left = targetRect.left - containerRect.left + targetRect.width / 2 - indicator.offsetWidth / 2 + 5; // Center horizontally
+
+            // Keep indicator within bounds of the container (simple check)
+            top = Math.max(0, top);
+            left = Math.max(0, left);
+            left = Math.min(containerRect.width - indicator.offsetWidth, left);
+
+            indicator.style.top = `${top}px`;
+            indicator.style.left = `${left}px`;
+        }
+
+
+        function runRound() {
+            round++;
+            statusMessage.textContent = `Round ${round}: Checking for winner...`;
+            nextStepButton.classList.add('hidden'); // Hide button during processing
+
+            // 1. Check for Winner
+            let winner = null;
+            activeCandidates.forEach(id => {
+                if (currentVotes[id].length >= QUOTA) {
+                    winner = id;
+                }
+            });
+
+            if (winner) {
+                // Pause before showing winner
+                const winnerCandidate = CANDIDATES.find(c => c.id === winner);
+                statusMessage.textContent = `Quota reached! ${winnerCandidate.name} is the winner.`;
+                nextStepButton.textContent = "Show Final Result";
+                nextStepButton.onclick = () => displayWinner(winner);
+                nextStepButton.classList.remove('hidden');
+                return; // Stop the count process here until button is clicked
+            }
+
+            // 2. Check if only one candidate remains
+            if (activeCandidates.length <= 1) {
+                const lastCandidateId = activeCandidates[0] || null;
+                 // If one remains they win by default even if under quota in preferential
+                const lastCandidate = lastCandidateId ? CANDIDATES.find(c => c.id === lastCandidateId) : null;
+                statusMessage.textContent = lastCandidate
+                    ? `${lastCandidate.name} is the last remaining candidate.`
+                    : "Counting finished.";
+                nextStepButton.textContent = "Show Final Result";
+                nextStepButton.onclick = () => displayWinner(lastCandidateId);
+                nextStepButton.classList.remove('hidden');
+                return; // Stop the count process here
+            }
+
+
+            // 3. Find Candidate to Eliminate
+            let minVotes = Infinity;
+            let candidatesToEliminate = []; // Handle potential ties for lowest
+
+            activeCandidates.forEach(id => {
+                const voteCount = currentVotes[id].length;
+                if (voteCount < minVotes) {
+                    minVotes = voteCount;
+                    candidatesToEliminate = [id]; // Start new list
+                } else if (voteCount === minVotes) {
+                    candidatesToEliminate.push(id); // Add to list of tied candidates
+                }
+            });
+
+            // Simplification: Eliminate the first one found in case of a tie
+            const eliminatedId = candidatesToEliminate[0];
+
+             if (!eliminatedId) {
+                 console.error("Could not determine candidate to eliminate.");
+                 statusMessage.textContent = "Error in counting process.";
+                 return;
+             }
+
+
+            statusMessage.textContent = `Round ${round}: ${CANDIDATES.find(c=>c.id === eliminatedId).name} has fewest votes (${minVotes}) and is eliminated.`;
+
+            // 4. Mark as Eliminated & Prepare for Distribution
+            const bucketElement = document.getElementById(`bucket-${eliminatedId}`);
+             if (bucketElement) bucketElement.classList.add('eliminated');
+            activeCandidates = activeCandidates.filter(id => id !== eliminatedId); // Remove from active list
+            eliminatedOrder.push(eliminatedId);
+
+            // Show button to trigger distribution animation
+            nextStepButton.textContent = `Distribute ${CANDIDATES.find(c=>c.id === eliminatedId).name}'s Votes`;
+            nextStepButton.onclick = () => distributeVotes(eliminatedId); // Set action for the button
+            nextStepButton.classList.remove('hidden');
+
+        }
+
+        function distributeVotes(eliminatedId) {
+            nextStepButton.classList.add('hidden'); // Hide button while distributing
+            statusMessage.textContent = `Distributing votes from ${CANDIDATES.find(c=>c.id === eliminatedId).name}...`;
+
+            const votesToMove = [...currentVotes[eliminatedId]]; // Copy array
+            currentVotes[eliminatedId] = []; // Empty the eliminated bucket's logical store
+            updateVoteCountLabel(eliminatedId);
+
+            let distributionCompleteCount = 0;
+            let userVoteWasCritical = false; // Flag to check if user vote had a key impact
+
+            if (votesToMove.length === 0) {
+                 // No votes to distribute, proceed to next round immediately
+                 setTimeout(() => {
+                    statusMessage.textContent = `Round ${round}: No votes to distribute. Checking results...`; // Clearer message
+                    runRound();
+                 }, 500); // Short delay for visual flow
+                 return;
+            }
+
+            // Get the container offset for absolute positioning calculations
+            const containerRect = bucketsContainer.getBoundingClientRect();
+
+            votesToMove.forEach((voteElement, index) => {
+                const prefsData = JSON.parse(voteElement.dataset.prefs); // { aqua: 1, leaf: 3, ... }
+                let currentPrefRank = parseInt(voteElement.dataset.currentPrefRank) || 1;
+                let nextPrefId = null;
+                let nextPrefRank = -1;
+
+                 // Find the next highest *active* preference starting from the rank AFTER the current one
+                 let checkRank = currentPrefRank + 1; // Start checking from the next rank
+                 while(checkRank <= CANDIDATES.length) {
+                     const candidateIdForRank = Object.keys(prefsData).find(id => prefsData[id] === checkRank);
+                     if (candidateIdForRank && activeCandidates.includes(candidateIdForRank)) {
+                         nextPrefId = candidateIdForRank;
+                         nextPrefRank = checkRank; // Store the rank number
+                         break; // Found the next active preference
+                     }
+                     checkRank++; // Check the next rank
+                 }
+
+
+                // Find the target bucket DOM element
+                const targetBucketContent = nextPrefId ? document.getElementById(`content-${nextPrefId}`) : null;
+
+                // Calculate animation positions
+                const startRect = voteElement.getBoundingClientRect();
+                const startX = startRect.left - containerRect.left;
+                const startY = startRect.top - containerRect.top;
+
+                // Temporarily move element for animation
+                const animatingElement = voteElement.cloneNode(true); // Clone to avoid layout shifts
+                animatingElement.style.position = 'absolute';
+                animatingElement.style.left = `${startX}px`;
+                animatingElement.style.top = `${startY}px`;
+                animatingElement.style.zIndex = '100'; // Ensure it's above others
+                animatingElement.style.transition = 'left 0.8s ease-in-out, top 0.8s ease-in-out, opacity 0.8s ease-in-out';
+                bucketsContainer.appendChild(animatingElement); // Add to container for positioning context
+
+                // Hide original element during animation
+                voteElement.style.opacity = '0';
+
+                 // Use setTimeout to stagger the animation start
+                setTimeout(() => {
+                    if (targetBucketContent) {
+                        // Add to logical count immediately
+                        currentVotes[nextPrefId].push(voteElement);
+                        updateVoteCountLabel(nextPrefId); // Update target label early
+
+                        // Calculate approximate end position (center of target bucket for simplicity)
+                        const endRect = targetBucketContent.getBoundingClientRect();
+                        // Estimate position within the flex container (this is approximate)
+                        const approxEndCol = currentVotes[nextPrefId].length % 5; // Guess column
+                        const approxEndRow = Math.floor(currentVotes[nextPrefId].length / 5); // Guess row
+                        const endX = (endRect.left - containerRect.left) + (approxEndCol * (startRect.width + 4)) + 5; // Add padding/margin guess
+                        const endY = (endRect.top - containerRect.top) + (approxEndRow * (startRect.height + 4)) + 5;
+
+                        // Start animation
+                        animatingElement.style.left = `${endX}px`;
+                        animatingElement.style.top = `${endY}px`;
+
+                        // Highlight user's vote during animation - make glow stronger
+                        if (voteElement === userBubbleElement) {
+                            animatingElement.style.filter = 'drop-shadow(0 0 10px gold)'; // Increased glow
+                            animatingElement.style.transform = 'scale(1.2)'; // Slightly larger scale
+                            // Also move the indicator along with the animating element
+                            if (userVoteIndicatorElement) {
+                                // Calculate indicator target position based on animating element's target
+                                let indicatorTop = endY - animatingElement.offsetHeight * 0.5; // Adjust vertical offset
+                                let indicatorLeft = endX + animatingElement.offsetWidth / 2 - userVoteIndicatorElement.offsetWidth / 2;
+                                userVoteIndicatorElement.style.top = `${indicatorTop}px`;
+                                userVoteIndicatorElement.style.left = `${indicatorLeft}px`;
+                            }
+                        }
+
+                        // On animation end
+                        // --- Check if user vote is critical in Round 2 or 3 ---
+                        if (voteElement === userBubbleElement && (round === 2 || round === 3) && nextPrefId) {
+                            // Simulate state *after* this vote moves
+                            let potentialCounts = {};
+                            activeCandidates.forEach(id => {
+                                potentialCounts[id] = currentVotes[id].length;
+                            });
+                            potentialCounts[nextPrefId]++; // Add user vote to recipient
+
+                            // Condition 1: Does it make the recipient win exactly?
+                            if (potentialCounts[nextPrefId] === QUOTA) {
+                                userVoteWasCritical = true;
+                                statusMessage.textContent = `Your vote transfer to ${CANDIDATES.find(c=>c.id===nextPrefId).name} makes them reach the quota!`;
+                            } else {
+                                // Condition 2: Does it save the recipient from potential elimination next round?
+                                // Find the minimum count *among others* after transfer
+                                let minCountAmongOthers = Infinity;
+                                let potentialLowestCandidates = [];
+                                activeCandidates.forEach(id => {
+                                    if (id === nextPrefId) return; // Don't compare recipient to self
+                                    if (potentialCounts[id] < minCountAmongOthers) {
+                                        minCountAmongOthers = potentialCounts[id];
+                                        potentialLowestCandidates = [id];
+                                    } else if (potentialCounts[id] === minCountAmongOthers) {
+                                        potentialLowestCandidates.push(id);
+                                    }
+                                });
+
+                                // If the recipient's new count is *exactly* one more than the minimum,
+                                // OR if the recipient *was* tied for lowest but now isn't
+                                let currentMinCount = Math.min(...activeCandidates.map(id => currentVotes[id].length));
+                                let wasTiedForLowest = currentVotes[nextPrefId].length === currentMinCount && activeCandidates.filter(id => currentVotes[id].length === currentMinCount).length > 1;
+
+                                if (potentialCounts[nextPrefId] === minCountAmongOthers + 1 || (wasTiedForLowest && potentialCounts[nextPrefId] > minCountAmongOthers)) {
+                                     userVoteWasCritical = true;
+                                     statusMessage.textContent = `Your vote transfer to ${CANDIDATES.find(c=>c.id===nextPrefId).name} was crucial in this round's count!`;
+                                }
+                            }
+                        }
+                        // --- End Critical Check ---
+
+
+                        // On animation end
+                        animatingElement.addEventListener('transitionend', () => {
+                            // Update the original element's data and number
+                            voteElement.dataset.currentPrefRank = nextPrefRank;
+                            const prefNumberSpan = voteElement.querySelector('.vote-preference-number');
+                            if(prefNumberSpan) prefNumberSpan.textContent = nextPrefRank;
+
+                            // Move original element to final destination and make visible
+                            targetBucketContent.appendChild(voteElement);
+                            voteElement.style.opacity = '1';
+
+                            // Reset user highlight on original if needed
+                            if (voteElement === userBubbleElement) {
+                                voteElement.style.filter = 'drop-shadow(0 0 3px gold)'; // Keep base highlight
+                                voteElement.style.transform = 'scale(1.1)';
+                                // Final indicator position adjustment after animation
+                                if (userVoteIndicatorElement) {
+                                    positionIndicatorNearElement(userVoteIndicatorElement, voteElement);
+                                }
+                            }
+
+                            animatingElement.remove(); // Clean up clone
+
+                            distributionCompleteCount++;
+                            if (distributionCompleteCount === votesToMove.length) {
+                                // If user vote was critical, pause slightly longer to read message
+                                const nextRoundDelay = userVoteWasCritical ? 1500 : 500;
+                                setTimeout(runRound, nextRoundDelay);
+                            }
+                        }, { once: true }); // Ensure listener runs only once
+
+                    } else {
+                        // Vote is "exhausted" - Animate fade out
+                        animatingElement.style.opacity = '0.3';
+                        animatingElement.style.transform = 'scale(0.8)';
+                        const prefNumberSpan = animatingElement.querySelector('.vote-preference-number');
+                        if(prefNumberSpan) prefNumberSpan.textContent = 'X';
+
+                        animatingElement.addEventListener('transitionend', () => {
+                             // Optionally remove the original hidden element too
+                             // voteElement.remove();
+                             animatingElement.remove(); // Clean up clone
+
+                             distributionCompleteCount++;
+                             if (distributionCompleteCount === votesToMove.length) {
+                                 // If user vote was critical (even if exhausted), pause slightly longer
+                                 const nextRoundDelay = userVoteWasCritical ? 1500 : 500;
+                                 setTimeout(runRound, nextRoundDelay);
+                             }
+                        }, { once: true });
+                    }
+
+                }, index * 100); // Stagger animation starts more noticeably
+            });
+        }
+
+        function displayWinner(winnerId) {
+            nextStepButton.classList.add('hidden'); // Hide button when showing results
+
+             if (winnerId) {
+                const winner = CANDIDATES.find(c => c.id === winnerId);
+                winnerMessage.textContent = `${winner.name} is elected with ${currentVotes[winnerId].length} votes! (Quota was ${QUOTA})`;
+             } else {
+                 winnerMessage.textContent = "Counting complete, but no single winner reached quota in this scenario."; // Or handle ties more explicitly
+             }
+
+             // Determine the path of the user's vote
+            let userVoteJourney = "Your vote initially went to your #1: ";
+            const userFirstPrefId = Object.keys(userPreferences).find(id => userPreferences[id] === 1);
+            userVoteJourney += CANDIDATES.find(c => c.id === userFirstPrefId).name + ". ";
+
+            const userBubbleFinalBucketId = userBubbleElement.parentElement.id.split('-')[1]; // e.g., 'content-leaf' -> 'leaf'
+
+             if (userFirstPrefId !== userBubbleFinalBucketId && !document.getElementById(`bucket-${userFirstPrefId}`).classList.contains('eliminated')) {
+                  userVoteJourney += `It stayed with them as they were not eliminated before a winner was found.`;
+             } else if (eliminatedOrder.includes(userFirstPrefId) && userBubbleFinalBucketId !== userFirstPrefId) {
+                  userVoteJourney += `Since they were eliminated, your vote transferred according to your preferences and ended up helping elect ${CANDIDATES.find(c => c.id === userBubbleFinalBucketId).name}!`;
+             } else if (eliminatedOrder.includes(userFirstPrefId) && userBubbleElement.style.opacity === '0.3') { // Check if exhausted
+                 userVoteJourney += `Since they were eliminated, your vote transferred according to your preferences, but exhausted before finding a remaining candidate.`;
+             } else if (!eliminatedOrder.includes(userFirstPrefId) && userFirstPrefId === winnerId) {
+                userVoteJourney += `Your first choice won!`;
+             }
+              else {
+                 // Handle cases where the first choice wasn't eliminated but didn't win either
+                 // Or if the bubble somehow didn't move - might indicate a logic issue to check
+                 const finalCandidate = CANDIDATES.find(c => c.id === userBubbleFinalBucketId);
+                 if(finalCandidate) {
+                    userVoteJourney += `It finished with ${finalCandidate.name}.`;
+                 } else {
+                     userVoteJourney += " It was exhausted as no further preferences were active.";
+                 }
+             }
+
+
+            takeawayMessage.textContent = `${userVoteJourney} This shows your vote isn't wasted, even if your first choice doesn't win. Numbering all boxes lets your vote keep counting!`;
+
+            electionSection.classList.add('hidden');
+            finalMessageSection.classList.remove('hidden');
+            nextStepButton.classList.add('hidden');
+        }
+
+
+        function resetDemo() {
+             userPreferences = {};
+             round = 0;
+             // Remove pulse class and indicator
+             if (userBubbleElement) {
+                 userBubbleElement.classList.remove('initial-pulse');
+             }
+             if (userVoteIndicatorElement) {
+                 userVoteIndicatorElement.remove();
+                 userVoteIndicatorElement = null;
+             }
+             userBubbleElement = null;
+             eliminatedOrder = [];
+
+
+             electionSection.classList.add('hidden');
+             finalMessageSection.classList.add('hidden');
+             rankingSection.classList.remove('hidden'); // Show ranking section again
+
+             setupRankingInputs(); // Recreate inputs to clear them
+             startButton.disabled = true; // Ensure start button is disabled initially
+             rankingError.textContent = ""; // Clear any previous errors
+
+             // No need to call setupBuckets here, it's called on Start
+        }
+
+
+        // --- INITIALIZATION ---
+        setupRankingInputs();
+        startButton.addEventListener('click', () => {
+            rankingSection.classList.add('hidden'); // Hide ranking once started
+            electionSection.classList.remove('hidden');
+            setupBuckets(); // Create the buckets visually
+             distributeInitialVotes(); // Place initial bubbles
+             setTimeout(runRound, 1500); // Start the first round after a short delay
+        });
+        resetButton.addEventListener('click', resetDemo);
+
+    </script>
+
+</body>
+</html>
